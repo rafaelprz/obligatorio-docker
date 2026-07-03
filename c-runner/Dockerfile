@@ -8,22 +8,24 @@ RUN gcc programa.c -o programa
 
 # la imagen quedo muy grande por tener compiladores y todo eso
 # entonces se crea otra etapa desde otra imagen
-# la imagen de alpine es de las mas livianas
-# al terminar el build, la imagen final es la ultima etapa
-FROM alpine
+# en este caso usamos una imagen basada en Debian para que el binario
+# compilado con gcc pueda correr correctamente con la misma libc
+FROM debian:bookworm-slim
 
-# instalar openssh
-RUN apk add --no-cache openssh
-
-# Crear keys
-RUN ssh-keygen -A
-
-# se crea un usuario en el sistema operativo alpine del contenedor
-# se hace para que sea este usuario el que ejecuta los procesos y no root
-RUN adduser -D appuser
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server passwd && \
+    mkdir -p /run/sshd /home/appuser/.ssh && \
+    ssh-keygen -A && \
+    useradd -m -s /bin/bash appuser && \
+    echo 'appuser:app123' | chpasswd && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+    echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && \
+    echo 'UsePAM no' >> /etc/ssh/sshd_config
 
 # el ejecutable que habia quedado en build, lo traemos a esta imagen
 COPY --from=build programa /home/appuser/programa
+
+RUN chmod +x /home/appuser/programa && \
+    chown appuser:appuser /home/appuser/programa
 
 # comando a ejecutar cuando se inicia el contenedor
 # el comando sshd hace que se empiecen a escuchar conexiones ssh

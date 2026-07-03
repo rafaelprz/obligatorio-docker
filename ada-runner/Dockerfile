@@ -3,18 +3,21 @@
 # lo comentado al final es una version de este dockerfile para que la imagen sea minima
 FROM ubuntu:24.04
 
-RUN apt update
-RUN apt install -y gnat openssh-server
-
-RUN mkdir -p /run/sshd
-
-RUN ssh-keygen -A
-
-RUN useradd -m appuser
+RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-server && \
+    mkdir -p /run/sshd && \
+    ssh-keygen -A && \
+    useradd -m -s /bin/bash appuser && \
+    echo 'appuser:app123' | chpasswd && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+    echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && \
+    echo 'UsePAM no' >> /etc/ssh/sshd_config
 
 COPY programa.adb .
 
-RUN gnatmake programa.adb
+RUN gnatmake programa.adb && \
+    mv programa /home/appuser/programa && \
+    chmod +x /home/appuser/programa && \
+    chown appuser:appuser /home/appuser/programa
 
 CMD ["/usr/sbin/sshd","-D"]
 
