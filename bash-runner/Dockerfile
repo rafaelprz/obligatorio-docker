@@ -2,6 +2,9 @@ FROM alpine
 
 RUN apk add --no-cache bash openssh
 
+# Crear keys
+RUN ssh-keygen -A
+
 RUN adduser -D appuser
 
 COPY programa.sh /home/appuser/programa.sh

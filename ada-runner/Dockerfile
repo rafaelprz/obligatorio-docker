@@ -6,6 +6,10 @@ FROM ubuntu:24.04
 RUN apt update
 RUN apt install -y gnat openssh-server
 
+RUN mkdir -p /run/sshd
+
+RUN ssh-keygen -A
+
 RUN useradd -m appuser
 
 COPY programa.adb .

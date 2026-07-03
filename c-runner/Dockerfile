@@ -15,6 +15,9 @@ FROM alpine
 # instalar openssh
 RUN apk add --no-cache openssh
 
+# Crear keys
+RUN ssh-keygen -A
+
 # se crea un usuario en el sistema operativo alpine del contenedor
 # se hace para que sea este usuario el que ejecuta los procesos y no root
 RUN adduser -D appuser

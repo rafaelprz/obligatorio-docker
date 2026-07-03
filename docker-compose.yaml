@@ -1,0 +1,16 @@
+services:
+
+  bash-runner:
+    build: ./bash-runner
+
+  c-runner:
+    build: ./c-runner
+
+  ada-runner:
+    build: ./ada-runner
+
+  manager:
+    build: ./manager
+
+    ports:
+      - "8080:8080"
