@@ -9,26 +9,26 @@ app = Flask(__name__)
 # Cliente del daemon de Docker (lee el socket montado en el contenedor).
 docker_client = docker.from_env()
 
+# Clave privada para autenticarse contra los runners (login por clave, sin password).
+SSH_KEY = "/root/.ssh/id_ed25519"
+
 RUNNERS = [
     {
         "name": "bash-runner",
         "host": "bash-runner",
         "user": "appuser",
-        "password": "app123",
         "command": "/home/appuser/programa.sh",
     },
     {
         "name": "c-runner",
         "host": "c-runner",
         "user": "appuser",
-        "password": "app123",
         "command": "/home/appuser/programa",
     },
     {
         "name": "ada-runner",
         "host": "ada-runner",
         "user": "appuser",
-        "password": "app123",
         "command": "/home/appuser/programa",
     },
 ]
@@ -38,12 +38,11 @@ RUNNERS = [
 # Ejecucion remota via SSH
 # ---------------------------------------------------------------------------
 
-def run_remote_command(host, user, password, command):
+def run_remote_command(host, user, command):
     ssh_args = [
-        "sshpass",
-        "-p",
-        password,
         "ssh",
+        "-i",
+        SSH_KEY,
         "-o",
         "StrictHostKeyChecking=no",
         "-o",
@@ -168,7 +167,6 @@ def run_selected():
     result = run_remote_command(
         host=selected_runner["host"],
         user=selected_runner["user"],
-        password=selected_runner["password"],
         command=selected_runner["command"],
     )
     return jsonify({"result": result})

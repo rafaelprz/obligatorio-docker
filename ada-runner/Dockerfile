@@ -4,20 +4,28 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-server && \
-    mkdir -p /run/sshd && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /run/sshd /home/appuser/.ssh && \
     ssh-keygen -A && \
-    useradd -m -s /bin/bash appuser && \
-    echo 'appuser:app123' | chpasswd && \
-    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+    useradd -m -d /home/appuser -s /bin/bash appuser && \
+    echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
+    echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config && \
+    echo 'KbdInteractiveAuthentication no' >> /etc/ssh/sshd_config && \
     echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && \
     echo 'UsePAM no' >> /etc/ssh/sshd_config
 
+# Clave publica del manager: unico login permitido (por clave, sin contraseña)
+COPY manager_key.pub /home/appuser/.ssh/authorized_keys
+
 COPY programa.adb .
 
+# StrictModes de sshd exige .ssh 700 y authorized_keys 600 del propio usuario
 RUN gnatmake programa.adb && \
     mv programa /home/appuser/programa && \
+    chmod 700 /home/appuser/.ssh && \
+    chmod 600 /home/appuser/.ssh/authorized_keys && \
     chmod +x /home/appuser/programa && \
-    chown appuser:appuser /home/appuser/programa
+    chown -R appuser:appuser /home/appuser
 
 CMD ["/usr/sbin/sshd","-D"]
 
