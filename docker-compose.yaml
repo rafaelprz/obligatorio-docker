@@ -14,3 +14,7 @@ services:
 
     ports:
       - "8080:8080"
+
+    # Socket de Docker: fuente de metricas reales (CPU/mem/estado) de los runners.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

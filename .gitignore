@@ -58,3 +58,6 @@ volumes/
 
 # Archivos generados por Compose
 docker-compose.override.yml
+
+# Markdown (notas, consigna, log de decisiones — no se versionan)
+*.md
