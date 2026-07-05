@@ -1,9 +1,20 @@
-# alpine ya trae las cosas necesarias para ejecutar el ejecutable de c o el script de bash
-# pero no trae gnat, y es mas facil instalarlo en un ubuntu
-# lo comentado al final es una version de este dockerfile para que la imagen sea minima
-FROM ubuntu:24.04
+# --- build: compila el .adb con gnat; el compilador queda SOLO en esta etapa ---
+FROM debian:bookworm AS build
 
-RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-server && \
+RUN apt-get update && apt-get install -y --no-install-recommends gnat && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY main.adb .
+
+RUN gnatmake main.adb -o programa
+
+# --- runtime: debian-slim sin compilador; solo el runtime de Ada ---
+# El binario GNAT enlaza libgnat/libgnarl (tasking) dinamicamente. Se instala el paquete
+# de runtime `libgnat-12` (que trae ambos .so), NO el compilador. Mismo distro/glibc que
+# la etapa build para que las versiones de las librerias coincidan (como en c-runner).
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server libgnat-12 && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /run/sshd /home/appuser/.ssh && \
     rm -f /etc/ssh/ssh_host_* && \
@@ -23,33 +34,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-se
 # Clave publica del manager: unico login permitido (por clave, sin contraseña)
 COPY manager_key.pub /home/appuser/.ssh/authorized_keys
 
-COPY main.adb .
+# Binario compilado (no el fuente ni el compilador)
+COPY --from=build programa /home/appuser/programa
 
-# StrictModes de sshd exige .ssh 700 y authorized_keys 600 del propio usuario
-RUN gnatmake main.adb && \
-    mv main /home/appuser/programa && \
-    chmod 700 /home/appuser/.ssh && \
+# StrictModes exige .ssh 700 y authorized_keys 600; la host key debe pertenecer a appuser
+RUN chmod 700 /home/appuser/.ssh && \
     chmod 600 /home/appuser/.ssh/authorized_keys && \
     chmod +x /home/appuser/programa && \
     chown appuser:appuser /etc/ssh/ssh_host_ed25519_key && \
     chown -R appuser:appuser /home/appuser
 
-# El proceso principal ya no corre como root
 USER appuser
 
 CMD ["/usr/sbin/sshd","-D"]
-
-
-#FROM ubuntu AS build
-#
-#RUN apt update && apt install -y gnat
-#
-#COPY programa.adb .
-#
-#RUN gnatmake programa.adb
-#
-#FROM alpine
-#
-#RUN apk add --no-cache openssh
-#
-#COPY --from=build programa /home/appuser/programa
