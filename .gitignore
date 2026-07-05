@@ -59,5 +59,11 @@ volumes/
 # Archivos generados por Compose
 docker-compose.override.yml
 
+# Claude
+./.claude/
+CLAUDE.md
+
 # Markdown (notas, consigna, log de decisiones — no se versionan)
-*.md
+parte4_virtualizacion.md
+DECISIONES.md
+TODO.md
