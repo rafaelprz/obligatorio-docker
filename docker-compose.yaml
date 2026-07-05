@@ -2,6 +2,9 @@ services:
 
   bash-runner:
     build: ./bash-runner
+    # Solo en la red interna: sin salida a internet, accesible solo desde el manager.
+    networks:
+      - backend
     # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
     read_only: true
     tmpfs:
@@ -13,7 +16,8 @@ services:
 
   c-runner:
     build: ./c-runner
-    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    networks:
+      - backend
     read_only: true
     tmpfs:
       - /tmp
@@ -24,7 +28,8 @@ services:
 
   ada-runner:
     build: ./ada-runner
-    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    networks:
+      - backend
     read_only: true
     tmpfs:
       - /tmp
@@ -35,6 +40,11 @@ services:
 
   manager:
     build: ./manager
+
+    # backend: hablar con los runners por SSH. frontend: publicar el panel al host.
+    networks:
+      - backend
+      - frontend
 
     ports:
       - "8080:8080"
@@ -51,3 +61,11 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+networks:
+  # Red interna de los runners: sin gateway al exterior (no pueden salir a internet)
+  # y solo alcanzable por contenedores de la misma red (el manager).
+  backend:
+    internal: true
+  # Puente que usa solo el manager para publicar el puerto 8080 al host.
+  frontend:
