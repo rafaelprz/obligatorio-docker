@@ -6,8 +6,12 @@ FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-server && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /run/sshd /home/appuser/.ssh && \
-    ssh-keygen -A && \
+    rm -f /etc/ssh/ssh_host_* && \
+    ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N "" && \
     useradd -m -d /home/appuser -s /bin/bash appuser && \
+    echo 'Port 2222' >> /etc/ssh/sshd_config && \
+    echo 'HostKey /etc/ssh/ssh_host_ed25519_key' >> /etc/ssh/sshd_config && \
+    echo 'PidFile none' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
     echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config && \
     echo 'KbdInteractiveAuthentication no' >> /etc/ssh/sshd_config && \
@@ -17,15 +21,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnat openssh-se
 # Clave publica del manager: unico login permitido (por clave, sin contraseña)
 COPY manager_key.pub /home/appuser/.ssh/authorized_keys
 
-COPY programa.adb .
+COPY main.adb .
 
 # StrictModes de sshd exige .ssh 700 y authorized_keys 600 del propio usuario
-RUN gnatmake programa.adb && \
-    mv programa /home/appuser/programa && \
+RUN gnatmake main.adb && \
+    mv main /home/appuser/programa && \
     chmod 700 /home/appuser/.ssh && \
     chmod 600 /home/appuser/.ssh/authorized_keys && \
     chmod +x /home/appuser/programa && \
+    chown appuser:appuser /etc/ssh/ssh_host_ed25519_key && \
     chown -R appuser:appuser /home/appuser
+
+# El proceso principal ya no corre como root
+USER appuser
 
 CMD ["/usr/sbin/sshd","-D"]
 
