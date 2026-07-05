@@ -2,12 +2,36 @@ services:
 
   bash-runner:
     build: ./bash-runner
+    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   c-runner:
     build: ./c-runner
+    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   ada-runner:
     build: ./ada-runner
+    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   manager:
     build: ./manager
@@ -18,3 +42,12 @@ services:
     # Socket de Docker: fuente de metricas reales (CPU/mem/estado) de los runners.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    # Endurecimiento: FS de solo lectura, sin capabilities, sin escalada de privilegios.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

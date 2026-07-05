@@ -1,8 +1,11 @@
+import concurrent.futures
+import json
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import docker
 from docker.errors import DockerException
-from flask import Flask, jsonify
-
-app = Flask(__name__)
 
 # Cliente del daemon de Docker (lee el socket montado en el contenedor).
 docker_client = docker.from_env()
@@ -31,6 +34,21 @@ RUNNERS = [
         "user": "appuser",
         "command": "/home/appuser/programa",
     },
+]
+
+# Contenedores monitoreados: el manager y los tres runners.
+MONITORED = [{"name": "manager", "host": "manager"}] + RUNNERS
+
+# Cache de metricas: un thread en segundo plano la refresca; el HTTP la devuelve al toque.
+# Leer stats del daemon es lento (~4s por contenedor), no puede hacerse por request.
+_cache_lock = threading.Lock()
+_cache = [
+    {
+        "name": t["name"], "host": t["host"], "status": "cargando",
+        "cpu_percent": None, "mem_used_mb": None,
+        "mem_limit_mb": None, "mem_percent": None,
+    }
+    for t in MONITORED
 ]
 
 
@@ -115,19 +133,18 @@ def get_metrics(target):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Rutas
-# ---------------------------------------------------------------------------
+def collect_loop():
+    # Refresca la cache en segundo plano. Consulta los contenedores en paralelo para
+    # que un ciclo dure ~lo de una sola consulta (y no la suma de las cuatro).
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(MONITORED)) as pool:
+        while True:
+            results = list(pool.map(get_metrics, MONITORED))
+            with _cache_lock:
+                _cache[:] = results
+            time.sleep(1)
 
-@app.route("/metrics")
-def metrics():
-    # El manager tambien se monitorea (metricas), ademas de los tres runners.
-    monitored = [{"name": "manager", "host": "manager"}] + RUNNERS
-    return jsonify([get_metrics(target) for target in monitored])
 
-
-@app.route("/")
-def home():
+def render_page():
     hints = []
     for runner in RUNNERS:
         cmd = (
@@ -139,6 +156,33 @@ def home():
     return PAGE.replace("__SSH_HINTS__", "".join(hints))
 
 
+# ---------------------------------------------------------------------------
+# Servidor HTTP (biblioteca estandar, sin framework)
+# ---------------------------------------------------------------------------
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/":
+            self._send(200, "text/html; charset=utf-8", render_page().encode("utf-8"))
+        elif self.path == "/metrics":
+            with _cache_lock:
+                body = json.dumps(_cache).encode("utf-8")
+            self._send(200, "application/json", body)
+        else:
+            self._send(404, "text/plain; charset=utf-8", b"Not Found")
+
+    def _send(self, status, content_type, body):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        # Silencia el log por request: el panel hace polling cada 3s (seria ruido).
+        pass
+
+
 PAGE = """<!doctype html>
 <html lang="es">
 <head>
@@ -146,24 +190,26 @@ PAGE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Manager - Panel de monitoreo</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    body { font-family: system-ui, sans-serif; margin: 2rem;
+           background: #14171c; color: #e6e6e6; }
     h1 { margin-bottom: 0.25rem; }
-    .sub { color: #666; margin-top: 0; }
+    h2 { margin-top: 1.5rem; }
+    .sub { color: #9aa0a6; margin-top: 0; }
     table { border-collapse: collapse; width: 100%; max-width: 800px; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; }
-    th { background: #f2f2f2; }
+    th, td { border: 1px solid #333a44; padding: 8px 10px; text-align: left; }
+    th { background: #1e232b; }
     .estado { font-weight: 600; }
-    .running { color: #157347; }
-    .down { color: #b02a37; }
+    .running { color: #4ade80; }
+    .down { color: #f87171; }
     ul.ssh { list-style: none; padding: 0; max-width: 800px; }
     ul.ssh li { margin: 10px 0; }
-    pre { background: #111; color: #eee; padding: 12px; border-radius: 6px;
-          overflow-x: auto; white-space: pre; }
+    pre { background: #0d1117; color: #e6edf3; padding: 12px; border-radius: 6px;
+          border: 1px solid #333a44; overflow-x: auto; white-space: pre; }
   </style>
 </head>
 <body>
   <h1>Manager</h1>
-  <p class="sub">Monitoreo en vivo de los contenedores (se actualiza cada 3 s).</p>
+  <p class="sub">Monitoreo en vivo de los contenedores (se actualiza cada 1 s).</p>
 
   <table>
     <thead>
@@ -203,11 +249,13 @@ PAGE = """<!doctype html>
     }
 
     cargarMetricas();
-    setInterval(cargarMetricas, 3000);
+    setInterval(cargarMetricas, 1000);
   </script>
 </body>
 </html>"""
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    threading.Thread(target=collect_loop, daemon=True).start()
+    server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
+    server.serve_forever()

@@ -1,4 +1,3 @@
 # Los scripts de shell deben tener finales de linea LF: un shebang con CRLF
 # hace que el contenedor no encuentre el interprete y falle al arrancar.
 *.sh text eol=lf
-entrypoint.sh text eol=lf

@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-server 
     rm -f /etc/ssh/ssh_host_* && \
     ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N "" && \
     useradd -m -d /home/appuser -s /bin/bash appuser && \
+    sed -i 's/^appuser:!:/appuser:*:/' /etc/shadow && \
+    sed -i '/^UsePAM/d' /etc/ssh/sshd_config && \
     echo 'Port 2222' >> /etc/ssh/sshd_config && \
     echo 'HostKey /etc/ssh/ssh_host_ed25519_key' >> /etc/ssh/sshd_config && \
     echo 'PidFile none' >> /etc/ssh/sshd_config && \
