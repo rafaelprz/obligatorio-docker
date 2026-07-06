@@ -1,3 +1,8 @@
 # Los scripts de shell deben tener finales de linea LF: un shebang con CRLF
 # hace que el contenedor no encuentre el interprete y falle al arrancar.
 *.sh text eol=lf
+
+# Las claves SSH son binarias: git NO debe convertir finales de linea.
+# Un CRLF corrompe la clave privada -> "error in libcrypto: unsupported".
+manager_key binary
+manager_key.pub binary
