@@ -1,8 +1,5 @@
-import concurrent.futures
 import json
-import threading
-import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import docker
 from docker.errors import DockerException
@@ -38,18 +35,6 @@ RUNNERS = [
 
 # Contenedores monitoreados: el manager y los tres runners.
 MONITORED = [{"name": "manager", "host": "manager"}] + RUNNERS
-
-# Cache de metricas: un thread en segundo plano la refresca; el HTTP la devuelve al toque.
-# Leer stats del daemon es lento (~4s por contenedor), no puede hacerse por request.
-_cache_lock = threading.Lock()
-_cache = [
-    {
-        "name": t["name"], "host": t["host"], "status": "cargando",
-        "cpu_percent": None, "mem_used_mb": None,
-        "mem_limit_mb": None, "mem_percent": None,
-    }
-    for t in MONITORED
-]
 
 
 # ---------------------------------------------------------------------------
@@ -133,17 +118,6 @@ def get_metrics(target):
     return result
 
 
-def collect_loop():
-    # Refresca la cache en segundo plano. Consulta los contenedores en paralelo para
-    # que un ciclo dure ~lo de una sola consulta (y no la suma de las cuatro).
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(MONITORED)) as pool:
-        while True:
-            results = list(pool.map(get_metrics, MONITORED))
-            with _cache_lock:
-                _cache[:] = results
-            time.sleep(1)
-
-
 def render_page():
     hints = []
     for runner in RUNNERS:
@@ -165,9 +139,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/":
             self._send(200, "text/html; charset=utf-8", render_page().encode("utf-8"))
         elif self.path == "/metrics":
-            with _cache_lock:
-                body = json.dumps(_cache).encode("utf-8")
-            self._send(200, "application/json", body)
+            # Se consultan los contenedores en el momento (sin cache): es lento
+            # (~varios segundos) pero simple.
+            data = [get_metrics(target) for target in MONITORED]
+            self._send(200, "application/json", json.dumps(data).encode("utf-8"))
         else:
             self._send(404, "text/plain; charset=utf-8", b"Not Found")
 
@@ -179,8 +154,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, *args):
-        # Silencia el log por request: el panel hace polling cada 3s (seria ruido).
-        pass
+        pass  # silencia el log por request
 
 
 PAGE = """<!doctype html>
@@ -209,7 +183,7 @@ PAGE = """<!doctype html>
 </head>
 <body>
   <h1>Manager</h1>
-  <p class="sub">Monitoreo en vivo de los contenedores (se actualiza cada 1 s).</p>
+  <p class="sub">Monitoreo de los contenedores (la consulta tarda unos segundos).</p>
 
   <table>
     <thead>
@@ -245,17 +219,17 @@ PAGE = """<!doctype html>
       } catch (e) {
         document.getElementById('filas').innerHTML =
           '<tr><td colspan="4">Error al leer metricas</td></tr>';
+      } finally {
+        // Se agenda la proxima recarga 2s despues de terminar (sin apilar pedidos).
+        setTimeout(cargarMetricas, 2000);
       }
     }
 
     cargarMetricas();
-    setInterval(cargarMetricas, 1000);
   </script>
 </body>
 </html>"""
 
 
 if __name__ == "__main__":
-    threading.Thread(target=collect_loop, daemon=True).start()
-    server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
-    server.serve_forever()
+    HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
